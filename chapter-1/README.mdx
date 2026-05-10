@@ -1,0 +1,645 @@
+# 멀티패러다임이 현대 언어를 확장하는 방법
+
+## 객체지향 디자인 패턴의 반복자 패턴과 일급 함수
+
+- 객체지향 기반 언어들은 반복자 패턴을 통해 지연성 있는 이터레이션 프로토콜은 구현
+- 일급 함수가 추가되면서 이를 바탕으로 `map`, `filter`, `reduce`, `take` 같은 이터레이터 헬퍼 함수들이 구현될 수 있었음
+- 객체지향 디자인 패턴인 반복자 패턴과 함수형 패러다임의 일급 함수가 만나 함수형 패러다임의 지연 평가와 리스트 프로세싱을 구현해나감
+
+### GoF의 반복자 패턴
+
+- 반복자 패턴은 객체 지향 디자인 패턴 중 하나로, 컬랙션의 요소를 순차적으로 접근하는 규약을 제시함
+- 아래는 반복자 구조를 타입스크립트 인터페이스 정의를 사용해 표현한 코드
+
+```ts
+interface IteratorYieldResult<T> {
+  done?: false;
+  value: T;
+}
+interface IteratorReturnResult {
+  done: true;
+  value: undefined;
+}
+
+interface Iterator<T> {
+  next(): IteratorYieldResult<T> | IteratorReturnResult;
+}
+```
+
+- 반복자 패턴은 컬랙션의 내부 구조를 노출하는 대신 next() 같은 public 메서드로 내부 요소에 접근할 수 있도록 설계되었음
+
+### ArrayLike로부터 Iterator 생성하기
+
+```ts
+class ArrayLikeIterator<T> implements Iterator<T> {
+  private index = 0;
+  constructor(private arrayLike: ArrayLike<T>) {}
+
+  next(): IteratorResult<T> {
+    if (this.index < this.arrayLike.length) {
+      return {
+        value: this.arrayLike[this.index++],
+        done: false,
+      };
+    } else {
+      return {
+        value: undefined,
+        done: true,
+      };
+    }
+  }
+}
+
+const arrayLike: ArrayLike<number> = {
+  0: 10,
+  1: 20,
+  2: 30,
+  length: 3,
+};
+
+const iterator = new ArrayLikeIterator(arrayLike);
+
+console.log(iterator.next()); // { value: 10, done: false }
+console.log(iterator.next()); // { value: 20, done: false }
+console.log(iterator.next()); // { value: 30, done: false }
+console.log(iterator.next()); // { value: undefined, done: true }
+```
+
+- ArrayLikeIterator는 GoF의 반복자 패턴을 따르고 있음
+- 이 클래스가 지원하는 컬랙션 타입은 ArrayLike
+
+```ts
+const array: Array<string> = ["a", "b", "c"];
+const iterator2: Iterator<string> = new ArrayLikeIterator(array);
+
+console.log(iterator2.next()); // { value: 'a', done: false }
+console.log(iterator2.next()); // { value: 'b', done: false }
+console.log(iterator2.next()); // { value: 'c', done: false }
+console.log(iterator2.next()); // { value: undefined, done: trues }
+```
+
+- 이터레이터의 이런 특성을 활용하여 지연평가를 구현할 수 있음
+
+### ArrayLike를 역순으로 순회하는 이터레이터 만들기
+
+#### Array의 reverse() 메서드
+
+```ts
+const array = ["a", "b"];
+array.reverse();
+
+console.log(array[0], array[1]); // b a
+```
+
+#### 이터레이터의 지연성을 이용한 reverse 함수 만들기
+
+- 이터레이터는 필요할 때마다 값을 하나씩 꺼내는 '지연 평가'를 지원하므로 모든 요소를 미리 뒤집어둘 필요가 없습니다.
+- 이로써 불필요한 연산과 메모리 사용량을 줄이며 필요한 시점에만 연산이 이루어지도록 개선할 수 있습니다.
+
+```ts
+function reverse<T>(arrayLike: ArrayLike<T>): Iterator<T> {
+  let idx = arrayLike.length;
+
+  return {
+    next() {
+      if (idx === 0) {
+        return { value: undefined, done: true };
+      } else {
+        return { value: arrayLike[--idx], done: false };
+      }
+    },
+  };
+}
+
+const array = ["A", "B"];
+const reversed = reverse(array);
+console.log(array); // ['A' , 'B']
+
+console.log(reversed.next().value, reversed.next().value); // B A
+```
+
+- 중요한 점은 reverse 함수를 호출하는 순간에는 아무 일도 일어나지 않고 reversed.next().value를 실행할 때마다 배열을 역순으로 하나씩 효율적으로 꺼낸다는 사실
+
+#### 지연 평가의 효율성
+
+```ts
+const array = ["A", "B", "C", "D", "E", "F"];
+const reversed = [...array].reverse();
+console.log(reversed[0], reversed[1], array[0], array[1]); // F, E, A, B
+
+const array2 = ["A", "B", "C", "D", "E", "F"];
+const reversed2 = reverse(array2);
+console.log(reversed2.next().value, reversed.next().value, array2[0], array2[1]); // F E A B
+```
+
+- 전자는 원본을 지키기 위해 동일한 크기의 배열을 복사한 다음 전체를 반전
+- 후자는 원래도 원본을 변경하지 않기 때문에 복사가 필요하지 않음!
+
+### 지연 평가되는 map 함수
+
+- 일급 함수와 고차 함수는 함수형 프로그래밍 패러다임의 핵심적인 구성 요소
+
+```ts
+function map<A, B>(transform: (value: A) => B, iterator: Iterator<A>): Iterator<B> {
+  return {
+    next(): IteratorResult<B> {
+      const { value, done } = iterator.next();
+
+      return done //
+        ? { value, done }
+        : { value: transform(value), done };
+    },
+  };
+}
+```
+
+- map 함수 역시 next()를 실행하기 전까지는 아무런 작업을 하지 않음
+- 외부에서 next() 메서드를 호출하면 그때 원본 이터레이터의 next() 메서드를 호출하여 값을 가져옵니다.
+- 고차 함수는 이나로 받은 함수를 원하는 시점에 실행시킬 수 있는 구조를 가짐
+
+```ts
+const array = ["A", "B", "C", "D", "E", "F"];
+const iterator = map((str) => str.toLowerCase(str), reverse(array));
+console.log(iterator.next().value, iterator.next().value); // f, e
+```
+
+- **반복자 패턴**의 지연성은 지연 평가가 가능한 객체를 생성할 수 있게 해주고 일급 함수는 고차함수를 정의할 수 있게함
+- 결과적으로 이 두 가지를 조합하면 map, filter, take, reduce 등의 지연 평가를 활용하거나 지연 평가된 리스트를 다루는 고도화된 리스트 프로세싱 함수를 구현할 수 있다
+
+## 명령형 프로그래밍으로 이터레이터를 만드는 제너레이터 함수
+
+- 정통적인 객체지향 디자인 패턴인 반복자 패턴이 함수형 패러다임의 일급 함수와 만나며 서로의 가치를 더욱 높이고 있다
+- 명령형 패러다임으로 작성되는 제너레이터 역시 이 조합화 호환되며, 이 세가지 패러다임이 하나의 언어 안에서 협력하며여 객체지향, 함수형, 명령형 패러다임을 함께 고도화하고 언어를 멀티패러다임적으로 발전시키고 있다
+- 제너레이터는 객체지향, 함수형 패러다임과 명령형 스타일이 서로 협력할 수 있게하는 중요한 기반을 제공
+
+### 제너레이터 기본 문법
+
+- **제너레이터**는 명령형 스타일로 **이터레이터**를 작성할 수 있게 해주는 문법
+- 호출 시 곧바로 실행되지 않고 이터레이터 객체를 반환
+
+#### yield와 next()
+
+- next() 메서드를 호출하면 제너레이터 함수의 본문이 yield 키워드를 만날때까지 실행
+- yield 키워드를 통해 외부로 값을 반환하고 이후 next()를 다시 호출하면 이전 실행 지점부터 이어서 함수가 재개
+
+```ts
+function* generator() {
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+const iter = generator();
+
+console.log(iter.next()); // { value: 1, done: false }
+console.log(iter.next()); // { value: 2, done: false }
+console.log(iter.next()); // { value: 3, done: false }
+console.log(iter.next()); // { value: undefined, done: true }
+```
+
+- 만약 yield 1; yield 2; 사이에 console.log('hi');가 있다면 yield2;까지 동작해야하기 때문에 console.log + yield 2까지 리턴이 된다
+
+#### 제너레이터와 제어문
+
+```ts
+function* generator(condition: boolean) {
+  yield 1;
+
+  if (condition) {
+    yield 2;
+  }
+
+  yield 3;
+}
+
+const iter1 = generator(false);
+
+console.log(iter1.next()); // { value: 1, done: false }
+console.log(iter1.next()); // { value: 3, done: false }
+console.log(iter1.next()); // { value: undefined, done: true }
+
+const iter2 = generator(true);
+
+console.log(iter1.next()); // { value: 1, done: false }
+console.log(iter1.next()); // { value: 2, done: false }
+console.log(iter1.next()); // { value: 3, done: false }
+console.log(iter1.next()); // { value: undefined, done: true }
+```
+
+- 제너레이터 안에서 if문을 사용하여 이터레이터가 리스트를 만드는 로직을 제어할 수 있다
+
+#### yield\* 키워드
+
+- yield\* 키워드는 제너레이터 함수 안에서 이터러블을 순회하며 해당 이터러블이 제공하는 요소들을 순차적으로 반환하도록 해준다
+
+```ts
+function* generator() {
+  yield 1;
+  yield* [2, 3];
+  yield 4;
+}
+
+const iter = generator();
+
+console.log(iter.next()); // { value: 1, done: false }
+console.log(iter.next()); // { value: 2, done: false }
+console.log(iter.next()); // { value: 3, done: false }
+console.log(iter.next()); // { value: 4, done: false }
+console.log(iter.next()); // { value: undefined, done: true }
+```
+
+#### naturals 제너레이터 함수
+
+```ts
+function* naturals() {
+  let n = 1;
+  while (true) {
+    yield n++;
+  }
+}
+
+const iter = naturals();
+
+console.log(iter.next()); // { value:1, done: false }
+console.log(iter.next()); // { value:2, done: false }
+console.log(iter.next()); // { value:3, done: false }
+```
+
+- naturals 제너레이터 함수는 무한 루프를 사용하여 자연수를 생성하지만 next 메서드를 호출할 때만 n을 반환하고 다시 일시 중지하기 때문에 프로세스나 브라우저가 멈추지 않는다
+
+#### 제너레이터로 작성한 reverse 함수
+
+```ts
+function* reverse<T>(arrayLike: ArrayLike<T>): IterableIterator<T> {
+  let idx = arrayLike.length;
+
+  while (idx) {
+    yield arrayLike[--idx];
+  }
+}
+```
+
+- 이전에 작성한 리버스 함수랑 구현은 다르지만 동작은 동일함
+- 이전 함수는 idx라는 상태를 바라보는 next() 메서드를 가진 객체로 구현한 반면, 여기서는 제어문을 활용한 명령형 코드로 작성함
+- 이를 통해 우리는 현대 프로그래밍 언어에서 동일한 문제를 객체지향 박식이나 명령형 등 여러패러다임 중 하나를 선택하여 해결할 수 있다는 사실을 생각해볼 수 있다.
+
+## 자바스크립트에서 반복자 패턴 사례: 이터레이터션 프로토콜
+
+- **이터레이션 프로토콜**은 자바스크립트의 규약
+- ES6에서 도입된 이터레이션 프로토콜은 어떤 객체가 이터러블인지 여부를 나타내는 규칙과 해당 규칙을 따르는 문법들을 제공하는 언어 전반의 규약
+
+### 이터레이터와 이터러블
+
+- 어떤 객체가 이터레이터를 반환하는 `[Symbol.iterator]() { return { next() { ... } }; }` 메서드를 가지고 있다면 **이터러블**
+- 이터러블 객체는 for...of문, 전개 연산자, 구조 분해 등 다양한 기능과 함께 사용할 수 있다.
+- 대표적으로 Array, Map, Set 등이 있고 Web API도 컬렉션 유형의 값들을 이터러블로 만들어 이터레이션 프로토콜을 따르고 있다.
+
+#### 이터레이터
+
+```ts
+function naturals(end = Infinity): Iterator<number> {
+  let n = 1;
+
+  return {
+    next(): IteratorResult<number> {
+      return n <= end //
+        ? { value: n++, done: false }
+        : { value: undefined, done: true };
+    },
+  };
+}
+```
+
+- 자연수를 생성하는 이터레이터를 반환하는 함수를 제너레이터가 아닌 일반 함수로 생성
+- 이전에 제너레이터로 작성한 naturals와 동일, 동작과 결과도 모두 동일
+
+#### for...of문으로 순회하려면
+
+```ts
+const iterator = naturals(3);
+
+// TS2488: Type Iterator<number, any, undefined>
+// must have a '[Symbol.iterator]()' method that returns an iterator
+for (const num of iterator) {
+  console.log(num); // 1, 2, 3
+}
+```
+
+- 위와 같이 사용하려면 타입에러가 발생
+- 제대로 동작하게 하려면 아래와 같이 수정
+
+```ts
+function naturals(end = Infinity): IterableIterator<number> {
+  let n = 1;
+
+  return {
+    next(): IteratorResult<number> {
+      return n <= end //
+        ? { value: n++, done: false }
+        : { value: undefined, done: true };
+    },
+    [Symbol.iterator]() {
+      return this;
+    },
+  };
+}
+
+const iterator = naturals(3);
+
+for (const num of iterator) {
+  console.log(num);
+}
+
+// 1
+// 2
+// 3
+```
+
+```ts
+interface IteratorYieldResult<T> {
+  done?: false;
+  value: T;
+}
+
+interface IteratorReturnResult {
+  done: true;
+  value: undefined;
+}
+
+interface Iterator<T> {
+  next(): IteratorYieldResult<T> | IteratorReturnResult;
+}
+
+interface Iterable<T> {
+  [Symbol.iterator](): Iterator<T>;
+}
+
+interface IterableIterator<T> extends Iterator<T> {
+  [Symbol.iterator](): IterableIterator<T>;
+}
+```
+
+- Iterator
+  - { value, done } 객체를 반환하는 next() 메서드를 가진 값
+- Iterable
+  - 이터레이터를 반환하는 [Symbol.iterator]() 메서드를 가진 값
+- IterableIterator
+  - 이터레이터이면서 이터러블인 값
+- 이터레이션 프로토콜
+  - 이터러블을 for...of문, 전개 연산자, 구조 분해 등과 함께 사용할 수 있게 해주는 규약
+
+#### 내장 이터러블
+
+```ts
+const array = [1, 2, 3];
+const arrayIterator = array[Symbol.iterator]();
+
+console.log(arrayIterator.next()); // { value: 1, done: false }
+console.log(arrayIterator.next()); // { value: 2, done: false }
+console.log(arrayIterator.next()); // { value: 3, done: false }
+console.log(arrayIterator.next()); // { value: undefined, done: true }
+
+for (const value of array) {
+  console.log(value); // 1, 2, 3
+}
+
+// 1
+// 2
+// 3
+```
+
+- 배열 array는 기본적으로 이터러블
+- Symbol.iterator 메서드를 통해 이터레이터를 생성하고 next() 메서드로 요소들을 하나씩 순회할 수 있다.
+- for...of문을 사용하여 모든 요소를 다시 순회할 수 있다.
+
+```ts
+const set = new Set([1, 2, 3]);
+const setIterator = set[Symbol.iterator]();
+
+console.log(setIterator.next()); // { value: 1, done: false }
+console.log(setIterator.next()); // { value: 2, done: false }
+console.log(setIterator.next()); // { value: 3, done: false }
+console.log(setIterator.next()); // { value: undefined, done: true }
+
+for (const value of set) {
+  console.log(value); // 1, 2, 3
+}
+```
+
+- Set 객체 역시 이터러블
+
+```ts
+const map = new Map([
+  ["a", 1],
+  ["b", 2],
+  ["c", 3],
+]);
+const mapIterator = map[Symbol.iterator]();
+
+console.log(mapIterator.next()); // { value: ['a', 1], done: false }
+console.log(mapIterator.next()); // { value: ['b', 2], done: false }
+console.log(mapIterator.next()); // { value: ['c', 3], done: false }
+console.log(mapIterator.next()); // { value: undefined, done: true }
+
+for (const [key, value] of map) {
+  console.log(key, value); // a 1, b 2, c 3
+}
+```
+
+- Map 객체도 이터러블
+
+```ts
+const mapEntries = map.entries();
+
+console.log(mapEntries.next()); // { value: ['a', 1], done: false }
+console.log(mapEntries.next()); // { value: ['b', 2], done: false }
+console.log(mapEntries.next()); // { value: ['c', 3], done: false }
+console.log(mapEntries.next()); // { value: undefined, done: true }
+
+for (const [key, value] of map.entries()) {
+  console.log(key, value); // a 1, b 2, c 3
+}
+```
+
+- map.entries() 메서드는 Map 객체의 엔트리를 IterableIterator로 반환한다.
+
+```ts
+const mapValues = map.values();
+
+console.log(mapValues.next()); // { value:1, done: false }
+
+for (const value of mapValues) {
+  console.log(value);
+}
+
+// 2
+// 3
+```
+
+- map.values() 메서드는 Map 객체의 값들을 IterableIterator로 반환한다.
+- for...of문으로 나머지 값을 순회할 수 있다.
+- values() 메서드로 반환된 이터레이터는 이미 첫 번째 요소를 소비했기 때문에 2부터 시작한다.
+
+```ts
+const mapKeys = map.keys();
+
+console.log(mapKeys.next()); // { value: 'a', done: false }
+
+for (const key of mapKeys) {
+  console.log(key);
+}
+
+// b
+// c
+```
+
+- map.keys() 메서드는 Map 객체의 키들을 IterableIterator로 반환한다.
+- for...of문으로 나머지 키들을 순회할 수 있다.
+- keys() 메서드로 반환된 이터레이터는 이미 첫 번째 요소를 소비했기 때문에 'b'부터 시작한다.
+
+#### 정리
+
+- 배열
+  - Symbol.iterator 메서드를 통해 이터레이터를 생성할 수 있다.
+  - for...of문을 사용하여 모든 요소를 순회할 수 있다.
+- Set 객체
+  - Symbol.iterator 메서드를 통해 이터레이터를 생성할 수 있다.
+  - for...of문을 사용하여 모든 요소를 순회할 수 있다.
+- Map 객체
+  - Symbol.iterator 메서드를 통해 이터레이터를 생성할 수 있다.
+  - for...of문을 사용하여 모든 요소를 순회할 수 있다.
+- map.entries()
+  - Map 객체의 엔트리를 IterableIterator로 반환한다.
+  - for...of문을 사용하여 모든 엔트리를 순회할 수 있다.
+- map.values(), map.keys()
+  - Map 객체의 값들을 IterableIterator로 반환한다.
+  - for...of문을 사용하여 모든 값을 순회할 수 있으나 이미 소비한 요소는 순회할 수 없다.
+
+### 언어와 이터러블의 상호작용
+
+#### 전개 연산자와 이터러블
+
+- 전개 연산자는 이터러블 객체의 모든 요소를 개별 요소로 확장하는 데 사용
+
+```ts
+const array = [1, 2, 3];
+const array2 = [...array, 4, 5, 6];
+```
+
+- 이터러블 객체는 전개 연산자를 사용하여 배열로 변환할 수 있다
+
+```ts
+const set = new Set([1, 2, 3]);
+const array = [...set];
+
+console.log(array); // [1, 2, 3]
+```
+
+- Set 객체의 요소들이 전개 연산자를 통해 배열로 변환
+- Array.from(set)과 동일한 결과
+- 전개 연산자는 함수 호출 시 이터러블 객체의 요소들을 개별 인자로 전달할 때도 유용
+
+```ts
+const numbers = [1, 2, 3];
+
+function sum(...nums: number[]): number {
+  return nums.reduce((a, b) => a + b, 0);
+}
+
+console.log(sum(...numbers)); // 6
+```
+
+- 함수의 인자를 전개 연산자를 활용하여 배열이든, 하나의 인자든, 여러개의 인자든 모두 처리할 수 있는 함수를 만들 수 있다
+
+#### 구조 분해 할당과 이터러블
+
+```ts
+const array = [1, 2, 3];
+const [first, second] = array;
+
+console.log(first); // 1
+console.log(second); // 2
+
+const array2 = [1, 2, 3, 4];
+const [head, ...tail] = array2;
+console.log(head); // 1
+console.log(tail); // [2, 3, 4]
+```
+
+```ts
+const map = new Map();
+
+map.set("a", 1);
+map.set("b", 2);
+map.set("c", 3);
+
+for (const [key, value] of map.entries()) {
+  console.log(`${key}: ${value}`);
+}
+
+// a: 1
+// b: 2
+// c: 3
+```
+
+#### 사용자 정의 이터러블과 전개 연산자
+
+```ts
+const array = [0, ...naturals(3)];
+
+console.log(array); // [0, 1, 2, 3]
+```
+
+- 전개 연산자와 구조 분해 할당은 이터러블 프로토콜을 활용하여 자바스크립트와 타입스크립트에서 데이터와 코드를 더욱 효과적으로 다루는 방법을 제공
+- 언어를 사용하는 개발자도 이터레이션 프로토콜을 통해 언어의 다양한 기능과 협업할 수 있다.
+- 이러한점은 개발자에게 많은 가능성을 열어준다.
+- 반복자 패턴은 컬렉션 내부 구조를 노출하는 대신 next() 같은 public 메서드를 통해 내부 요소에 접근할 수 있도록 설계
+- 이는 컬렉션의 실제 구조와 상관없이 다양한 컬렉션 스타일 데이터의 요소를 일관된 방식으로 순회할 수 있도록 함
+- 이터러블은 [Symbol.iterator]() 메서드를 통해 이터레이터를 반환하는 값
+- 이를 통해 해당 값이 이터러블인지 검사할 수 있으며 이터레이터로 변환하거나 순회할 수 있다.
+- 이 과정은 어떤 자료구조인지 상관없이 실제 구조와 무관하게 일관된 방식으로 이루어진다.
+
+### 제너레이터로 만든 이터레이터도 이터러블
+
+#### 제너레이터로 만든 map 함수
+
+```ts
+function* map<A, B>(f: (value: A) => B, iterable: Iterable<A>): IterableIterator<B> {
+  for (const value of iterable) {
+    yield f(value);
+  }
+}
+
+const array = [1, 2, 3, 4];
+// array의 각 요소에 2배 연산을 적용한 IterableIterator를 반환
+const mapped: IterableIterator<number> = map((x) => x * 2, array);
+const iterator = mapped[Symbol.iterator]();
+
+// mapped.next()와 iterator.next()는 동일한 이터레이터를 참조하므로 이미 소비된 요소는 다시 나오지 않음
+console.log(mapped.next().value); // 2
+console.log(iterator.next().value); // 4
+
+// 남은 요소만을 배열로 만들어 반환
+console.log([...iterator]); // [6, 8]
+```
+
+#### 제너레이터로 만든 이터레이터와 for...of문
+
+```ts
+let acc = 0;
+
+for (const num of map((x) => x * 2, naturals(4))) {
+  acc += num;
+}
+
+console.log(acc); // 20
+```
+
+- naturals()의 반환값도 이터레이터인 동시에 이터러블이기 때문에 map함수와 조합할 수 있다.
+- map 함수에 배열이 아닌 지연 평가되는 이터레이터를 전달함
+- 실행 과정에서 배열을 만들지 않고도 acc에 모든 값을 더함
+
+##### 보충설명
+
+- for...of가 map 함수가 반환하는 이터레이터를 순회하면서 각 요소에 2배 연산을 적용하여 acc에 더함
+- 실용적인 이점은 naturals(10000)이어도 메모리에 10000개를 미리 만들어두지 않고, for...of가 요청할 때마다 하나씩 만들어서 처리하고 버린다는 점
