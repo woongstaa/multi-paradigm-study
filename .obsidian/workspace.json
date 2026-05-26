@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "chapter-1/README.md",
+                "file": "chapter-2/README.md",
                 "mode": "source",
                 "source": false
               },
@@ -185,5 +185,10 @@
     }
   },
   "active": "1df1dc40f40c5e17",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "chapter-1/README.md",
+    "chapter-2/README.md",
+    "chapter-2",
+    "README.md"
+  ]
 }
