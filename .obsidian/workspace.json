@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "chapter-2/README.md",
+                "file": "chapter-3/README.md",
                 "mode": "source",
                 "source": false
               },
@@ -95,7 +95,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "chapter-1/README.md",
+                "file": "chapter-3/README.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -186,8 +186,10 @@
   },
   "active": "1df1dc40f40c5e17",
   "lastOpenFiles": [
-    "chapter-1/README.md",
     "chapter-2/README.md",
+    "chapter-3/README.md",
+    "chapter-3",
+    "chapter-1/README.md",
     "chapter-2",
     "README.md"
   ]
