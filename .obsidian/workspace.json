@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "chapter-3/README.md",
+                "file": "chapter-4/README.md",
                 "mode": "source",
                 "source": false
               },
@@ -95,7 +95,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "chapter-3/README.md",
+                "file": "chapter-4/README.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -157,7 +157,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "chapter-1/README.md",
+                "file": "chapter-4/README.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -166,12 +166,12 @@
               "title": "Outline of README"
             }
           }
-        ]
+        ],
+        "currentTab": 4
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -184,10 +184,13 @@
       "bases:Create new base": false
     }
   },
-  "active": "1df1dc40f40c5e17",
+  "active": "3e1f947291987f57",
   "lastOpenFiles": [
-    "chapter-2/README.md",
     "chapter-3/README.md",
+    "chapter-4/README.md",
+    "Untitled",
+    "chapter-4",
+    "chapter-2/README.md",
     "chapter-3",
     "chapter-1/README.md",
     "chapter-2",
