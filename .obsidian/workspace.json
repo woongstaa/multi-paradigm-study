@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "chapter-4/README.md",
+                "file": "chapter-6/README.md",
                 "mode": "source",
                 "source": false
               },
@@ -78,8 +78,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "right": {
     "id": "99475301aea13cab",
@@ -171,7 +170,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -184,11 +184,15 @@
       "bases:Create new base": false
     }
   },
-  "active": "3e1f947291987f57",
+  "active": "1df1dc40f40c5e17",
   "lastOpenFiles": [
-    "chapter-3/README.md",
+    "Untitled.md",
+    "chapter-6/README.md",
+    "chapter-5/README.md",
+    "chapter-6",
     "chapter-4/README.md",
-    "Untitled",
+    "chapter-5",
+    "chapter-3/README.md",
     "chapter-4",
     "chapter-2/README.md",
     "chapter-3",
